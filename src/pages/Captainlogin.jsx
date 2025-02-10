@@ -20,7 +20,6 @@ const Captainlogin = () => {
       email: email,
       password
     }
-
     const response = await axios.post(`${import.meta.env.VITE_BASE_URL}/captains/login`, captain)
 
     if (response.status === 200) {
