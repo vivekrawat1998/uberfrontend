@@ -4,63 +4,70 @@ import { io } from 'socket.io-client';
 export const SocketContext = createContext();
 
 const socket = io(import.meta.env.VITE_BASE_URL, {
-    transports: ['polling', 'websocket'],
-    upgrade: true,
-    rememberUpgrade: true,
+    transports: ['polling'],  // Start with polling only
     reconnection: true,
-    reconnectionAttempts: 5,
+    reconnectionAttempts: Infinity,
     reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
     timeout: 20000,
-    autoConnect: true,
-    forceNew: true,
+    autoConnect: false,
     path: '/socket.io/',
-    withCredentials: true
+    withCredentials: true,
+    extraHeaders: {
+        'Access-Control-Allow-Origin': 'https://uberclonefrontend.vercel.app'
+    }
 });
 
 const SocketProvider = ({ children }) => {
-    const [isConnected, setIsConnected] = useState(socket.connected);
+    const [isConnected, setIsConnected] = useState(false);
+    const [retryCount, setRetryCount] = useState(0);
 
     useEffect(() => {
         function onConnect() {
             console.log('Connected to server');
             setIsConnected(true);
+            setRetryCount(0);
+            
+            // Try upgrading to WebSocket after successful polling connection
+            socket.io.opts.transports = ['polling', 'websocket'];
         }
 
-        function onDisconnect() {
-            console.log('Disconnected from server');
+        function onDisconnect(reason) {
+            console.log('Disconnected from server:', reason);
             setIsConnected(false);
+            
+            // Fall back to polling on disconnection
+            socket.io.opts.transports = ['polling'];
         }
 
         function onError(error) {
             console.error('Socket error:', error);
-            // Attempt to reconnect on error
-            socket.connect();
+            setRetryCount(prev => prev + 1);
+            
+            if (retryCount > 3) {
+                socket.io.opts.transports = ['polling'];
+            }
+            
+            setTimeout(() => {
+                socket.connect();
+            }, 1000 * Math.min(retryCount, 5));
         }
 
         socket.on('connect', onConnect);
         socket.on('disconnect', onDisconnect);
         socket.on('error', onError);
-        socket.on('connect_error', (error) => {
-            console.error('Connection error:', error);
-            // Try to reconnect with polling if WebSocket fails
-            if (socket.io.opts.transports.includes('websocket')) {
-                console.log('Falling back to polling transport');
-                socket.io.opts.transports = ['polling'];
-                socket.connect();
-            }
-        });
+        socket.on('connect_error', onError);
 
-        if (!socket.connected) {
-            socket.connect();
-        }
+        socket.connect();
 
         return () => {
             socket.off('connect', onConnect);
             socket.off('disconnect', onDisconnect);
             socket.off('error', onError);
-            socket.off('connect_error');
+            socket.off('connect_error', onError);
+            socket.disconnect();
         };
-    }, []);
+    }, [retryCount]);
 
     return (
         <SocketContext.Provider value={{ socket, isConnected }}>
