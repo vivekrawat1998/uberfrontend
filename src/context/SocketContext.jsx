@@ -1,39 +1,69 @@
-import React, { createContext, useEffect } from 'react';
+import React, { createContext, useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 
 export const SocketContext = createContext();
 
-const socket = io(`${import.meta.env.VITE_BASE_URL}`, {
-    transports: ['websocket'],
-    withCredentials: true,
-    extraHeaders: {
-        "Access-Control-Allow-Origin": "https://uberclonefrontend.vercel.app"
-    }
-}); 
+const socket = io(import.meta.env.VITE_BASE_URL, {
+    transports: ['polling', 'websocket'],
+    upgrade: true,
+    rememberUpgrade: true,
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+    timeout: 20000,
+    autoConnect: true,
+    forceNew: true,
+    path: '/socket.io/',
+    withCredentials: true
+});
 
 const SocketProvider = ({ children }) => {
-    useEffect(() => {
-        socket.on('connect', () => {
-            console.log('Connected to server');
-        });
+    const [isConnected, setIsConnected] = useState(socket.connected);
 
+    useEffect(() => {
+        function onConnect() {
+            console.log('Connected to server');
+            setIsConnected(true);
+        }
+
+        function onDisconnect() {
+            console.log('Disconnected from server');
+            setIsConnected(false);
+        }
+
+        function onError(error) {
+            console.error('Socket error:', error);
+            // Attempt to reconnect on error
+            socket.connect();
+        }
+
+        socket.on('connect', onConnect);
+        socket.on('disconnect', onDisconnect);
+        socket.on('error', onError);
         socket.on('connect_error', (error) => {
             console.error('Connection error:', error);
+            // Try to reconnect with polling if WebSocket fails
+            if (socket.io.opts.transports.includes('websocket')) {
+                console.log('Falling back to polling transport');
+                socket.io.opts.transports = ['polling'];
+                socket.connect();
+            }
         });
 
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-        });
+        if (!socket.connected) {
+            socket.connect();
+        }
 
         return () => {
-            socket.off('connect');
+            socket.off('connect', onConnect);
+            socket.off('disconnect', onDisconnect);
+            socket.off('error', onError);
             socket.off('connect_error');
-            socket.off('disconnect');
         };
     }, []);
 
     return (
-        <SocketContext.Provider value={{ socket }}>
+        <SocketContext.Provider value={{ socket, isConnected }}>
             {children}
         </SocketContext.Provider>
     );
