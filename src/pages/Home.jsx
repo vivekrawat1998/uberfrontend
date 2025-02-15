@@ -164,7 +164,7 @@ const Home = () => {
     setvehiclepanel(true);
     try {
       const response = await axios.get(
-        `${import.meta.env.VITE_BASE_URL}/ride/getFare`,
+        `${import.meta.env.VITE_BASE_URL}/rides/getFare`,
         {
           params: { pickup, destination },
           headers: {
