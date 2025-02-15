@@ -142,8 +142,7 @@ const Home = () => {
   };
 
   const handledestinationchange = async (e) => {
-    setdestination(e.tar
-      .value);
+    setdestination(e.target.value);
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_BASE_URL}/maps/get-suggestions`,
